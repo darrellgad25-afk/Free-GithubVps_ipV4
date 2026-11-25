@@ -71,4 +71,3 @@ jobs:
       - name: Keep running
         run: |
           tail -f sni.log
-          
