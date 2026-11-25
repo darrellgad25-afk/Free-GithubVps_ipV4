@@ -18,7 +18,7 @@ jobs:
         with:
           authkey: ${{ secrets.TAILSCALE_AUTHKEY }}
 
-      - name: Install tools
+      - name: Install diagnostic tools
         run: |
           sudo apt-get update
           sudo apt-get install -y openssl python3
@@ -31,7 +31,7 @@ jobs:
             -days 2 -nodes \
             -subj "/CN=sni-test.local"
 
-      - name: Create SNI server
+      - name: Create SNI inspection server
         run: |
           cat > server.py <<'PY'
           import ssl
@@ -44,6 +44,9 @@ jobs:
                   self.send_header("Content-Length", str(len(body)))
                   self.end_headers()
                   self.wfile.write(body)
+
+              def log_message(self, fmt, *args):
+                  print("HTTP:", fmt % args, flush=True)
 
           context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
           context.load_cert_chain("server.crt", "server.key")
@@ -68,6 +71,6 @@ jobs:
           sleep 2
           cat sni.log
 
-      - name: Keep running
+      - name: Keep server running
         run: |
           tail -f sni.log
