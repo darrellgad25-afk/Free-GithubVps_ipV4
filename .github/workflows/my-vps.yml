@@ -1,5 +1,5 @@
 
-name: Tailscale SNI Security Lab
+name: 12-Hour Multi-Port Security Lab
 
 on:
   workflow_dispatch:
@@ -8,9 +8,9 @@ permissions:
   contents: read
 
 jobs:
-  sni-lab:
+  security-lab:
     runs-on: ubuntu-latest
-    timeout-minutes: 350
+    timeout-minutes: 720
 
     steps:
       - name: Connect to Tailscale
@@ -18,28 +18,72 @@ jobs:
         with:
           authkey: ${{ secrets.TAILSCALE_AUTHKEY }}
 
-      - name: Install diagnostic tools
+      - name: Install services
         run: |
           sudo apt-get update
-          sudo apt-get install -y openssl python3
+          sudo apt-get install -y \
+            openssh-server \
+            openssl \
+            python3 \
+            netcat-openbsd
 
-      - name: Create TLS certificate
+          sudo mkdir -p /run/sshd
+
+      - name: Configure SSH
+        run: |
+          sudo ssh-keygen -A
+          sudo useradd -m labuser || true
+
+          ssh-keygen -t ed25519 \
+            -f lab_key -N "" \
+            -C "temporary-security-lab"
+
+          sudo mkdir -p /home/labuser/.ssh
+          sudo cp lab_key.pub \
+            /home/labuser/.ssh/authorized_keys
+
+          sudo chown -R labuser:labuser \
+            /home/labuser/.ssh
+
+          sudo chmod 700 /home/labuser/.ssh
+          sudo chmod 600 \
+            /home/labuser/.ssh/authorized_keys
+
+          sudo sed -i \
+            's/^#*PubkeyAuthentication.*/PubkeyAuthentication yes/' \
+            /etc/ssh/sshd_config
+
+          sudo sed -i \
+            's/^#*PasswordAuthentication.*/PasswordAuthentication no/' \
+            /etc/ssh/sshd_config
+
+          sudo sed -i \
+            's/^#*PermitRootLogin.*/PermitRootLogin no/' \
+            /etc/ssh/sshd_config
+
+          sudo /usr/sbin/sshd
+
+      - name: Generate TLS certificate
         run: |
           openssl req -x509 -newkey rsa:2048 \
             -keyout server.key \
             -out server.crt \
-            -days 2 -nodes \
+            -days 1 -nodes \
             -subj "/CN=sni-test.local"
 
-      - name: Create SNI inspection server
+      - name: Create diagnostic server
         run: |
           cat > server.py <<'PY'
           import ssl
+          import threading
           from http.server import HTTPServer, BaseHTTPRequestHandler
 
           class Handler(BaseHTTPRequestHandler):
               def do_GET(self):
-                  body = b"SNI test server working"
+                  body = (
+                      "Temporary security lab working\n"
+                      "HTTP/TLS diagnostics active\n"
+                  ).encode()
                   self.send_response(200)
                   self.send_header("Content-Length", str(len(body)))
                   self.end_headers()
@@ -48,29 +92,53 @@ jobs:
               def log_message(self, fmt, *args):
                   print("HTTP:", fmt % args, flush=True)
 
-          context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
-          context.load_cert_chain("server.crt", "server.key")
+          def start_http(port, tls=False):
+              server = HTTPServer(("0.0.0.0", port), Handler)
 
-          def check_sni(sock, name, ctx):
-              print("RECEIVED SNI:", name, flush=True)
+              if tls:
+                  ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+                  ctx.load_cert_chain("server.crt", "server.key")
 
-          context.set_servername_callback(check_sni)
+                  def sni(sock, name, context):
+                      print("PORT", port, "SNI:", name, flush=True)
 
-          server = HTTPServer(("0.0.0.0", 8443), Handler)
-          server.socket = context.wrap_socket(
-              server.socket, server_side=True
-          )
+                  ctx.set_servername_callback(sni)
+                  server.socket = ctx.wrap_socket(
+                      server.socket, server_side=True
+                  )
 
-          print("SNI server listening on port 8443", flush=True)
-          server.serve_forever()
+              print("Listening:", port, flush=True)
+              server.serve_forever()
+
+          for port, tls in [
+              (80, False),
+              (443, True),
+              (8080, False),
+              (8443, True)
+          ]:
+              threading.Thread(
+                  target=start_http,
+                  args=(port, tls),
+                  daemon=True
+              ).start()
+
+          threading.Event().wait()
           PY
 
-      - name: Start SNI server
+      - name: Start diagnostic services
         run: |
-          nohup python3 -u server.py > sni.log 2>&1 &
-          sleep 2
-          cat sni.log
+          nohup python3 -u server.py > server.log 2>&1 &
+          sleep 3
+          cat server.log
 
-      - name: Keep server running
+      - name: Show lab information
         run: |
-          tail -f sni.log
+          echo "SSH: 22"
+          echo "HTTP: 80, 8080"
+          echo "HTTPS/TLS: 443, 8443"
+          echo "Private network: Tailscale"
+          echo "Temporary duration: 24 hours"
+
+      - name: Keep lab running
+        run: |
+          tail -f server.log
