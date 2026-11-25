@@ -1,1 +1,74 @@
 
+name: Tailscale SNI Security Lab
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  sni-lab:
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+
+    steps:
+      - name: Connect to Tailscale
+        uses: tailscale/github-action@v2
+        with:
+          authkey: ${{ secrets.TAILSCALE_AUTHKEY }}
+
+      - name: Install tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y openssl python3
+
+      - name: Create TLS certificate
+        run: |
+          openssl req -x509 -newkey rsa:2048 \
+            -keyout server.key \
+            -out server.crt \
+            -days 2 -nodes \
+            -subj "/CN=sni-test.local"
+
+      - name: Create SNI server
+        run: |
+          cat > server.py <<'PY'
+          import ssl
+          from http.server import HTTPServer, BaseHTTPRequestHandler
+
+          class Handler(BaseHTTPRequestHandler):
+              def do_GET(self):
+                  body = b"SNI test server working"
+                  self.send_response(200)
+                  self.send_header("Content-Length", str(len(body)))
+                  self.end_headers()
+                  self.wfile.write(body)
+
+          context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+          context.load_cert_chain("server.crt", "server.key")
+
+          def check_sni(sock, name, ctx):
+              print("RECEIVED SNI:", name, flush=True)
+
+          context.set_servername_callback(check_sni)
+
+          server = HTTPServer(("0.0.0.0", 8443), Handler)
+          server.socket = context.wrap_socket(
+              server.socket, server_side=True
+          )
+
+          print("SNI server listening on port 8443", flush=True)
+          server.serve_forever()
+          PY
+
+      - name: Start SNI server
+        run: |
+          nohup python3 -u server.py > sni.log 2>&1 &
+          sleep 2
+          cat sni.log
+
+      - name: Keep running
+        run: |
+          tail -f sni.log
+          
