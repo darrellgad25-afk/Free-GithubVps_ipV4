@@ -10,7 +10,7 @@ permissions:
 jobs:
   security-lab:
     runs-on: ubuntu-latest
-    timeout-minutes: 720
+    timeout-minutes: 350
 
     steps:
       - name: Connect to Tailscale
@@ -21,11 +21,7 @@ jobs:
       - name: Install services
         run: |
           sudo apt-get update
-          sudo apt-get install -y \
-            openssh-server \
-            openssl \
-            python3
-
+          sudo apt-get install -y openssh-server openssl python3
           sudo mkdir -p /run/sshd
 
       - name: Configure SSH
@@ -33,32 +29,17 @@ jobs:
           sudo ssh-keygen -A
           sudo useradd -m labuser || true
 
-          ssh-keygen -t ed25519 \
-            -f lab_key -N "" \
-            -C "temporary-security-lab"
-
           sudo mkdir -p /home/labuser/.ssh
-          sudo cp lab_key.pub \
-            /home/labuser/.ssh/authorized_keys
 
-          sudo chown -R labuser:labuser \
-            /home/labuser/.ssh
+          echo 'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIIwdZmfVnlSUKBYF7IIYpPNIuH+cRpqW9IrvcA6+FExe u0_a255@localhost' | sudo tee /home/labuser/.ssh/authorized_keys > /dev/null
 
+          sudo chown -R labuser:labuser /home/labuser/.ssh
           sudo chmod 700 /home/labuser/.ssh
-          sudo chmod 600 \
-            /home/labuser/.ssh/authorized_keys
+          sudo chmod 600 /home/labuser/.ssh/authorized_keys
 
-          sudo sed -i \
-            's/^#*PubkeyAuthentication.*/PubkeyAuthentication yes/' \
-            /etc/ssh/sshd_config
-
-          sudo sed -i \
-            's/^#*PasswordAuthentication.*/PasswordAuthentication no/' \
-            /etc/ssh/sshd_config
-
-          sudo sed -i \
-            's/^#*PermitRootLogin.*/PermitRootLogin no/' \
-            /etc/ssh/sshd_config
+          sudo sed -i 's/^#*PubkeyAuthentication.*/PubkeyAuthentication yes/' /etc/ssh/sshd_config
+          sudo sed -i 's/^#*PasswordAuthentication.*/PasswordAuthentication no/' /etc/ssh/sshd_config
+          sudo sed -i 's/^#*PermitRootLogin.*/PermitRootLogin no/' /etc/ssh/sshd_config
 
           sudo /usr/sbin/sshd
 
@@ -132,7 +113,7 @@ jobs:
           sudo ss -lntp
           echo "SSH: 22"
           echo "HTTP: 80, 8080"
-          echo "HTTPS/TLS: 443, 8443"
+          echo "HTTPS/TLS diagnostics: 443, 8443"
 
       - name: Keep lab running
         run: |
