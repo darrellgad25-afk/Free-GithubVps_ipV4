@@ -24,8 +24,7 @@ jobs:
           sudo apt-get install -y \
             openssh-server \
             openssl \
-            python3 \
-            netcat-openbsd
+            python3
 
           sudo mkdir -p /run/sshd
 
@@ -80,10 +79,7 @@ jobs:
 
           class Handler(BaseHTTPRequestHandler):
               def do_GET(self):
-                  body = (
-                      "Temporary security lab working\n"
-                      "HTTP/TLS diagnostics active\n"
-                  ).encode()
+                  body = b"Temporary security lab working\n"
                   self.send_response(200)
                   self.send_header("Content-Length", str(len(body)))
                   self.end_headers()
@@ -127,17 +123,16 @@ jobs:
 
       - name: Start diagnostic services
         run: |
-          nohup python3 -u server.py > server.log 2>&1 &
+          sudo nohup python3 -u server.py > server.log 2>&1 &
           sleep 3
           cat server.log
 
-      - name: Show lab information
+      - name: Verify listening ports
         run: |
+          sudo ss -lntp
           echo "SSH: 22"
           echo "HTTP: 80, 8080"
           echo "HTTPS/TLS: 443, 8443"
-          echo "Private network: Tailscale"
-          echo "Temporary duration: 24 hours"
 
       - name: Keep lab running
         run: |
