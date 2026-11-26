@@ -9,7 +9,7 @@ permissions:
 jobs:
   security-lab:
     runs-on: ubuntu-latest
-    timeout-minutes: 350
+    timeout-minutes: 350 # Set to 5h 50m to trigger before the 6h limit
 
     steps:
       - name: Connect to Tailscale
@@ -17,18 +17,17 @@ jobs:
         with:
           authkey: ${{ secrets.TAILSCALE_AUTHKEY }}
 
-      - name: Install Network Tools
+      - name: Install SSH and Tinyproxy
         run: |
           sudo apt-get update
           sudo apt-get install -y openssh-server tinyproxy
 
-      - name: Configure SSH Service
+      - name: Configure SSH (Private Key Auth)
         run: |
           sudo mkdir -p /run/sshd
           sudo ssh-keygen -A
           sudo useradd -m -s /bin/bash labuser || true
           
-          # Set up the SSH directory and authorized_keys
           sudo mkdir -p /home/labuser/.ssh
           echo "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDQRqs2HCmaSTNN6RAVLhsArcrpG53HxxDCz/iXTFug2rvJbLzRx1QR8tzqUL6DYQGG6Axk0Gg0RsvUgtKIOHHwpr3xsXDRHMQ+6CQFt873ZE8ds4GCHFPXyszAPIZBkz3s22vdhjTg7Y9eO6Q3+UzxQQN2FxF2HYtJYNE5vFaJZ29t4S55RAD7wE9Xln9blDKhZ8tVlb8bqt3DlhgxiLLW65Rk3zgwqYfE1ViFrzpsaddCAt+J5UN73Wm94MywQmW6di2k50yQpEUDUgWkUFFBhNJf8FkUy1+gi8nKYd6dFiMk+ZWhg7QH3R3+FAWD2a3b+Gxz6fZlOgZZ1V4TEd7F u0_a559@localhost" | sudo tee /home/labuser/.ssh/authorized_keys
           
@@ -36,27 +35,31 @@ jobs:
           sudo chmod 700 /home/labuser/.ssh
           sudo chmod 600 /home/labuser/.ssh/authorized_keys
           
-          # Configure SSH settings
           sudo sed -i 's/^#*PubkeyAuthentication.*/PubkeyAuthentication yes/' /etc/ssh/sshd_config
           sudo sed -i 's/^#*PasswordAuthentication.*/PasswordAuthentication no/' /etc/ssh/sshd_config
-          sudo sed -i 's/^#*PermitRootLogin.*/PermitRootLogin no/' /etc/ssh/sshd_config
-          
           sudo service ssh restart
 
-      - name: Configure Proxy Service
+      - name: Configure Tinyproxy (Port 80 -> 22)
         run: |
           sudo sed -i 's/^Port 8888/Port 80/' /etc/tinyproxy/tinyproxy.conf
           sudo sed -i 's/^Allow 127.0.0.1/Allow 0.0.0.0\/0/' /etc/tinyproxy/tinyproxy.conf
           echo "ConnectPort 22" | sudo tee -a /etc/tinyproxy/tinyproxy.conf
           sudo systemctl restart tinyproxy
 
-      - name: Get Server IP
+      - name: Get Tailscale IP
         run: |
           echo "=================================================="
           echo "COPY THIS SERVER IP:"
           tailscale ip -4
           echo "=================================================="
 
-      - name: Keep lab running
+      - name: Auto-Renew Workflow
         run: |
+          echo "Renewing workflow in 5h 50m..."
           sleep 21000
+          curl -L -X POST \
+            -H "Accept: application/vnd.github+json" \
+            -H "Authorization: Bearer ${{ secrets.GH_PAT }}" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            https://api.github.com/repos/${{ github.repository }}/actions/workflows/school-work-time.yml/dispatches \
+            -d '{"ref":"main"}'
