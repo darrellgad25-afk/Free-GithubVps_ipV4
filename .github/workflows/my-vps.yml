@@ -26,29 +26,24 @@ jobs:
         run: |
           sudo mkdir -p /run/sshd
           sudo ssh-keygen -A
-          sudo useradd -m labuser || true
+          sudo useradd -m -s /bin/bash labuser || true
           
-          # Set password for Injector
+          # Set password and ensure the account is not locked
           echo "labuser:password123" | sudo chpasswd
+          sudo passwd -u labuser
           
-          # Enable password login
+          # Enable password login and disable root login
           sudo sed -i 's/^#*PasswordAuthentication.*/PasswordAuthentication yes/' /etc/ssh/sshd_config
           sudo sed -i 's/^#*PermitRootLogin.*/PermitRootLogin no/' /etc/ssh/sshd_config
+          
+          # Restart the SSH service to apply changes
           sudo service ssh restart
 
       - name: Configure Tinyproxy (Listen on 80, Allow SSH)
         run: |
-          # Make proxy listen on port 80
           sudo sed -i 's/^Port 8888/Port 80/' /etc/tinyproxy/tinyproxy.conf
-          
-          # Allow connections from anywhere
           sudo sed -i 's/^Allow 127.0.0.1/Allow 0.0.0.0\/0/' /etc/tinyproxy/tinyproxy.conf
-          
-          # CRITICAL: Explicitly allow CONNECT to port 22 (SSH)
-          # This is the fix for the 403 error
           echo "ConnectPort 22" | sudo tee -a /etc/tinyproxy/tinyproxy.conf
-          
-          # Restart to apply changes
           sudo systemctl restart tinyproxy
 
       - name: Get Tailscale IP
