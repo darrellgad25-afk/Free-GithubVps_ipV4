@@ -41,12 +41,14 @@ jobs:
           # Make proxy listen on port 80
           sudo sed -i 's/^Port 8888/Port 80/' /etc/tinyproxy/tinyproxy.conf
           
-          # Allow connections from anywhere (Tailscale network)
+          # Allow connections from anywhere
           sudo sed -i 's/^Allow 127.0.0.1/Allow 0.0.0.0\/0/' /etc/tinyproxy/tinyproxy.conf
           
-          # CRITICAL: Allow the proxy to forward connections to SSH port 22
+          # CRITICAL: Explicitly allow CONNECT to port 22 (SSH)
+          # This is the fix for the 403 error
           echo "ConnectPort 22" | sudo tee -a /etc/tinyproxy/tinyproxy.conf
           
+          # Restart to apply changes
           sudo systemctl restart tinyproxy
 
       - name: Get Tailscale IP
