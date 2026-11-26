@@ -1,4 +1,4 @@
-name: 12-Hour SSH Proxy for Injector
+name: 12-Hour Injector Bypass Setup
 
 on:
   workflow_dispatch:
@@ -22,27 +22,28 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y openssh-server tinyproxy
 
-      - name: Configure SSH (With Password)
+      - name: Configure SSH (Password Auth)
         run: |
           sudo mkdir -p /run/sshd
           sudo ssh-keygen -A
           sudo useradd -m labuser || true
           
-          # Set a password for easy login in HTTP Injector
+          # Set password for Injector
           echo "labuser:password123" | sudo chpasswd
           
-          # Enable password authentication
+          # Enable password login
           sudo sed -i 's/^#*PasswordAuthentication.*/PasswordAuthentication yes/' /etc/ssh/sshd_config
           sudo sed -i 's/^#*PermitRootLogin.*/PermitRootLogin no/' /etc/ssh/sshd_config
           sudo service ssh restart
 
-      - name: Configure Tinyproxy (Port 80 to 22)
+      - name: Configure Tinyproxy (Listen on 80, Allow SSH)
         run: |
           # Make proxy listen on port 80
           sudo sed -i 's/^Port 8888/Port 80/' /etc/tinyproxy/tinyproxy.conf
-          # Allow outside connections
-          sudo sed -i 's/^#Allow 127.0.0.1/Allow 0.0.0.0\/0/' /etc/tinyproxy/tinyproxy.conf
+          
+          # Allow connections from anywhere (Tailscale network)
           sudo sed -i 's/^Allow 127.0.0.1/Allow 0.0.0.0\/0/' /etc/tinyproxy/tinyproxy.conf
+          
           # CRITICAL: Allow the proxy to forward connections to SSH port 22
           echo "ConnectPort 22" | sudo tee -a /etc/tinyproxy/tinyproxy.conf
           
@@ -51,7 +52,7 @@ jobs:
       - name: Get Tailscale IP
         run: |
           echo "=================================================="
-          echo "COPY THIS TAILSCALE IP:"
+          echo "COPY THIS IP FOR YOUR INJECTOR CONFIG:"
           tailscale ip -4
           echo "=================================================="
 
