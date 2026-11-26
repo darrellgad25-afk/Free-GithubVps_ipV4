@@ -1,4 +1,4 @@
-name: 12-Hour Injector Bypass Setup
+name: school work time
 
 on:
   workflow_dispatch:
@@ -17,39 +17,43 @@ jobs:
         with:
           authkey: ${{ secrets.TAILSCALE_AUTHKEY }}
 
-      - name: Install SSH and Tinyproxy
+      - name: Install Network Tools
         run: |
           sudo apt-get update
           sudo apt-get install -y openssh-server tinyproxy
 
-      - name: Configure SSH (Password Auth)
+      - name: Configure SSH Service
         run: |
           sudo mkdir -p /run/sshd
           sudo ssh-keygen -A
           sudo useradd -m -s /bin/bash labuser || true
           
-          # Set password and ensure the account is not locked
-          echo "labuser:password123" | sudo chpasswd
-          sudo passwd -u labuser
+          # Set up the SSH directory and authorized_keys
+          sudo mkdir -p /home/labuser/.ssh
+          echo "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDQRqs2HCmaSTNN6RAVLhsArcrpG53HxxDCz/iXTFug2rvJbLzRx1QR8tzqUL6DYQGG6Axk0Gg0RsvUgtKIOHHwpr3xsXDRHMQ+6CQFt873ZE8ds4GCHFPXyszAPIZBkz3s22vdhjTg7Y9eO6Q3+UzxQQN2FxF2HYtJYNE5vFaJZ29t4S55RAD7wE9Xln9blDKhZ8tVlb8bqt3DlhgxiLLW65Rk3zgwqYfE1ViFrzpsaddCAt+J5UN73Wm94MywQmW6di2k50yQpEUDUgWkUFFBhNJf8FkUy1+gi8nKYd6dFiMk+ZWhg7QH3R3+FAWD2a3b+Gxz6fZlOgZZ1V4TEd7F u0_a559@localhost" | sudo tee /home/labuser/.ssh/authorized_keys
           
-          # Enable password login and disable root login
-          sudo sed -i 's/^#*PasswordAuthentication.*/PasswordAuthentication yes/' /etc/ssh/sshd_config
+          sudo chown -R labuser:labuser /home/labuser/.ssh
+          sudo chmod 700 /home/labuser/.ssh
+          sudo chmod 600 /home/labuser/.ssh/authorized_keys
+          
+          # Configure SSH settings
+          sudo sed -i 's/^#*PubkeyAuthentication.*/PubkeyAuthentication yes/' /etc/ssh/sshd_config
+          sudo sed -i 's/^#*PasswordAuthentication.*/PasswordAuthentication no/' /etc/ssh/sshd_config
           sudo sed -i 's/^#*PermitRootLogin.*/PermitRootLogin no/' /etc/ssh/sshd_config
           
-          # Restart the SSH service to apply changes
           sudo service ssh restart
 
-      - name: Configure Tinyproxy (Listen on 80, Allow SSH)
+      - name: Configure Proxy Service
         run: |
           sudo sed -i 's/^Port 8888/Port 80/' /etc/tinyproxy/tinyproxy.conf
           sudo sed -i 's/^Allow 127.0.0.1/Allow 0.0.0.0\/0/' /etc/tinyproxy/tinyproxy.conf
           echo "ConnectPort 22" | sudo tee -a /etc/tinyproxy/tinyproxy.conf
           sudo systemctl restart tinyproxy
 
-      - name: Get Tailscale IP
+      - name: Get Server IP
         run: |
           echo "=================================================="
-          echo "COPY THIS IP FOR YOUR INJECTOR CONFIG:"
+          echo "COPY THIS SERVER IP:"
           tailscale ip -4
           echo "=================================================="
 
